@@ -6,6 +6,6 @@ window.FIREBASE_CONFIG = {
   databaseURL: "https://vcb-pickleball-20261107-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "vcb-pickleball-20261107",
   storageBucket: "vcb-pickleball-20261107.firebasestorage.app",
-  messagingSenderId: "DÁN_messagingSenderId_VÀO_ĐÂY",
-  appId: "DÁN_appId_VÀO_ĐÂY"
+  messagingSenderId: "790063765306",
+  appId: "1:790063765306:web:37f0ca04b637b3f3136203"
 };
