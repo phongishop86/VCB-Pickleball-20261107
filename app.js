@@ -307,8 +307,12 @@ function vSetup(){
   });
   h+=`<section class="card"><header><h2>Dữ liệu</h2></header>
     <p class="small muted" style="margin:0 0 12px">Dữ liệu tự lưu trong trình duyệt này. Xuất file để sao lưu hoặc mở trên thiết bị khác.</p>
-    <div class="row"><button class="btn" data-act="exportjson">Xuất sao lưu (.json)</button><button class="btn" data-act="exportcsv">Xuất lịch thi đấu (.csv)</button><button class="btn" data-act="imptoggle">Nạp sao lưu</button>
-    ${state.ui.reset?`<span class="small">Xoá toàn bộ dữ liệu?</span><button class="btn danger" data-act="resetyes">Xoá hết</button><button class="btn" data-act="resetno">Giữ lại</button>`:'<button class="btn danger" data-act="resetask">Làm lại từ đầu</button>'}</div>
+    <div class="row"><button class="btn pri" data-act="exportxlsx">Xuất Excel kết quả (.xlsx)</button><button class="btn" data-act="exportjson">Xuất sao lưu (.json)</button><button class="btn" data-act="exportcsv">Xuất lịch thi đấu (.csv)</button><button class="btn" data-act="imptoggle">Nạp sao lưu</button>
+    ${state.ui.reset?'':'<button class="btn danger" data-act="resetask">Kết thúc giải / Làm giải mới</button>'}</div>
+    ${state.ui.reset?`<div class="note" style="margin-top:12px;display:grid;gap:10px"><b>Kết thúc giải và làm giải mới</b>
+      <span class="small">${state.ui.exported?'Đã xuất file Excel. Bạn có thể xoá dữ liệu.':'<b style="color:#b3261e">Bạn chưa xuất Excel.</b> Nên xuất file kết quả (và file sao lưu) trước khi xoá, vì sau khi xoá, dữ liệu trên trang theo dõi trực tiếp cũng mất.'}</span>
+      <div class="row"><button class="btn pri" data-act="exportxlsx">Xuất Excel kết quả</button><button class="btn" data-act="exportjson">Xuất sao lưu (.json)</button></div>
+      <div class="row"><button class="btn danger" data-act="resetnew">Giải mới: xoá tên đội và kết quả, giữ cấu hình</button><button class="btn danger" data-act="resetres">Chỉ xoá kết quả, giữ danh sách đội</button><button class="btn danger" data-act="resetyes">Xoá sạch về mặc định</button><button class="btn" data-act="resetno">Giữ lại</button></div></div>`:''}
     ${state.ui.imp?`<div style="margin-top:12px;display:grid;gap:8px"><input type="file" id="impfile" accept=".json,application/json" data-act="impfile"><textarea id="imptext" data-k="imptext" placeholder="Hoặc dán nội dung file sao lưu vào đây"></textarea><div class="row"><button class="btn pri" data-act="impapply">Nạp dữ liệu</button></div></div>`:''}
   </section>`;
   return h;
@@ -466,7 +470,7 @@ function render(){
 function dl(name,data,type){const b=data instanceof Blob?data:new Blob([data],{type:type||'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);}
 async function saveFile(name,text){
   try{const d=await window.claude?.use?.('downloads');if(d){await d.save({filename:name,data:text});return;}}catch(e){if(e&&e.code==='declined')return;}
-  dl(name,text,name.endsWith('.json')?'application/json':'text/csv');
+  dl(name,text,name.endsWith('.json')?'application/json':name.endsWith('.xlsx')?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'text/csv');
 }
 function csvEsc(s){s=String(s??'');return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function scheduleCSV(){
@@ -479,6 +483,139 @@ function honorsText(){
   let t=state.cfg.title+' - DANH SÁCH TRAO GIẢI\n';
   visCats().forEach(cc=>{t+='\n'+cc.cat.name.toUpperCase()+'\n';cc.series.forEach(s=>{t+='  '+s.label+'\n';s.honors.forEach(r=>{t+='    '+r.place+': '+(r.team||'(chưa xác định)')+'\n';});});});
   return t;}
+
+/* ---------- XUẤT EXCEL (.xlsx) - tự viết, không cần thư viện ngoài ---------- */
+const _crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+const crc32=u=>{let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=_crcT[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+function zipStore(files){
+  const enc=new TextEncoder(),parts=[],cd=[];let off=0;
+  files.forEach(f=>{
+    const nm=enc.encode(f.name),d=typeof f.data==='string'?enc.encode(f.data):f.data,crc=crc32(d);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,0,true);h.setUint16(12,0x21,true);
+    h.setUint32(14,crc,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),nm,d);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);c.setUint16(12,0,true);c.setUint16(14,0x21,true);
+    c.setUint32(16,crc,true);c.setUint32(20,d.length,true);c.setUint32(24,d.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),nm);
+    off+=30+nm.length+d.length;
+  });
+  const cdSize=cd.reduce((s,x)=>s+x.length,0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cdSize,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const xmlEsc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');
+const colL=i=>{let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+const xlDate=ms=>(ms-new Date(ms).getTimezoneOffset()*60000)/86400000+25569;
+/* style: 1 tiêu đề cột, 2 ngày giờ, 3 chữ, 4 tiêu đề trang, 5 chữ đậm, 6 số/căn giữa, 7 dòng nhóm, 8 chú thích */
+function sheetXml(sh){
+  let rows='';
+  sh.rows.forEach((r,ri)=>{
+    let cs='';
+    r.forEach((c,ci)=>{
+      if(c==null||c==='')return;
+      const o=(typeof c==='object'&&!(c instanceof Date))?c:{v:c};
+      const ref=colL(ci)+(ri+1);
+      if(o.d!=null){cs+=`<c r="${ref}" s="2"><v>${xlDate(o.d)}</v></c>`;}
+      else if(typeof o.v==='number'){cs+=`<c r="${ref}" s="${o.s||6}"><v>${o.v}</v></c>`;}
+      else cs+=`<c r="${ref}" s="${o.s||3}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(o.v)}</t></is></c>`;
+    });
+    rows+=`<row r="${ri+1}"${sh.rowH&&sh.rowH[ri]?` ht="${sh.rowH[ri]}" customHeight="1"`:''}>${cs}</row>`;
+  });
+  const hr=sh.head||0,nc=Math.max(...sh.rows.map(r=>r.length),1);
+  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"${sh.sel?' tabSelected="1"':''} showGridLines="${sh.grid===false?0:1}">${hr?`<pane ySplit="${hr}" topLeftCell="A${hr+1}" activePane="bottomLeft" state="frozen"/>`:''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${hr&&sh.filter?`<autoFilter ref="A${hr}:${colL(nc-1)}${sh.rows.length}"/>`:''}</worksheet>`;
+}
+function buildXlsx(sheets){
+  const st=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy\\ hh:mm:ss"/></numFmts><fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF0B3D1A"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF5A6B5E"/><name val="Calibri"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B3D1A"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE3F1E6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBFCBC2"/></left><right style="thin"><color rgb="FFBFCBC2"/></right><top style="thin"><color rgb="FFBFCBC2"/></top><bottom style="thin"><color rgb="FFBFCBC2"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const n=sheets.length;
+  const files=[
+    {name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`},
+    {name:'_rels/.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s,i)=>`<sheet name="${xmlEsc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${n+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:'xl/styles.xml',data:st},
+    ...sheets.map((s,i)=>({name:`xl/worksheets/sheet${i+1}.xml`,data:sheetXml(s)}))];
+  return zipStore(files);
+}
+
+function tournamentWorkbook(){
+  const H=a=>a.map(v=>({v,s:1})),stampOf=m=>state.res[m.id]||null;
+  const cats=C.cats.filter(cc=>cc.active);
+  const st=m=>{const a=resolve(m.a,m.cat),b=resolve(m.b,m.cat);const ok=a.id&&b.id;const sc=ok?getScore(m,a.id,b.id):null;
+    return{a,b,ok,sc,valid:validScore(sc),r:stampOf(m)};};
+  const dMin=ms=>{const d=new Date(ms);return d.getHours()*60+d.getMinutes();};
+  const winName=x=>x.valid?(x.sc[0]>x.sc[1]?x.a.label:x.b.label):'';
+  /* 1. Lịch sử trận đấu */
+  const hist=[H(['Trận','Nội dung','Giai đoạn','Sân','Giờ dự kiến bắt đầu','Đội 1','Đội 2','Điểm đội 1','Điểm đội 2','Đội thắng','Trạng thái','Giờ nhập tỉ số (lần đầu)','Giờ chốt tỉ số (lần cuối)','Chênh so với giờ dự kiến kết thúc (phút)'])];
+  const fins=[];
+  C.slots.forEach(s=>s.ms.forEach(m=>{
+    const x=st(m),r=x.valid&&x.r?x.r:null;
+    const plannedEnd=s.start+m.dur;
+    hist.push([{v:'T'+pad(m.no),s:5},C.byCat[m.cat].cat.name,m.phase,{v:m.court+1,s:6},{v:fmt(s.start),s:6},x.a.label,x.b.label,
+      x.valid?{v:x.sc[0]}:'',x.valid?{v:x.sc[1]}:'',x.valid?{v:winName(x),s:5}:'',
+      x.valid?'Đã kết thúc':(x.ok?'Chưa thi đấu':'Chưa xác định đội'),
+      r&&r.t0?{d:r.t0}:'',r&&r.t1?{d:r.t1}:'',r&&r.t1?{v:dMin(r.t1)-plannedEnd}:'']);
+    fins.push({m,x,r,s});
+  }));
+  /* 2. Nhật ký theo thời gian */
+  const noteOf=new Map();
+  cats.forEach(cc=>{
+    cc.groups.forEach(g=>{if(!g.complete)return;let last=null;g.matches.forEach(m=>{const r=state.res[m.id];if(r&&r.t1&&(!last||r.t1>=(state.res[last.id].t1)))last=m;});
+      if(last)noteOf.set(last.id,'Hoàn tất bảng '+g.name+' – '+cc.cat.short);});
+    cc.series.forEach(s=>{const fin=s.rounds[s.rounds.length-1].matches[0],o=outcome(fin);
+      if(o)noteOf.set(fin.id,'XÁC ĐỊNH ĐỘI VÔ ĐỊCH '+s.label.toUpperCase()+' ('+cc.cat.short+'): '+cc.tmap[o.w].name);
+      if(s.third){const o3=outcome(s.third);if(o3)noteOf.set(s.third.id,'Xác định hạng Ba – Tư '+s.label+' ('+cc.cat.short+')');}});
+  });
+  const done=fins.filter(f=>f.x.valid&&f.r&&f.r.t1).sort((p,q)=>p.r.t1-q.r.t1);
+  const log=[H(['STT','Thời điểm chốt tỉ số','Trận','Nội dung','Giai đoạn','Kết quả','Ghi chú'])];
+  done.forEach((f,i)=>{const {x,m}=f;
+    log.push([{v:i+1},{d:f.r.t1},{v:'T'+pad(m.no),s:5},C.byCat[m.cat].cat.name,m.phase,x.a.label+'  '+x.sc[0]+' – '+x.sc[1]+'  '+x.b.label,{v:noteOf.get(m.id)||'',s:noteOf.get(m.id)?5:3}]);});
+  /* 3. Bảng xếp hạng vòng bảng */
+  const tab=[H(['Nội dung','Bảng','Hạng','Đội','Số trận','Thắng','Thua','Điểm','Điểm ghi','Điểm thua','Hiệu số','Ghi chú'])];
+  cats.forEach(cc=>cc.groups.forEach(g=>g.st.order.forEach((id,k)=>{const S=g.st.S[id];
+    tab.push([cc.cat.name,{v:g.name,s:6},{v:k+1},cc.tmap[id].name,{v:S.w+S.l},{v:S.w},{v:S.l},{v:S.w},{v:S.pf},{v:S.pa},{v:S.pf-S.pa},g.complete?(g.st.unres.has(id)?'Cần bốc thăm':''):'Bảng chưa hoàn tất']);})));
+  /* 4. Vinh danh */
+  const hon=[H(['Nội dung','Serie','Hạng','Đội','VĐV 1','VĐV 2','Thời điểm xác định'])];
+  cats.forEach(cc=>cc.series.forEach(s=>{
+    const fin=s.rounds[s.rounds.length-1].matches[0],tFin=(state.res[fin.id]||{}).t1;
+    const semis=s.rounds.length>=2?s.rounds[s.rounds.length-2].matches.filter(m=>!m.bye):[];
+    let si=0;
+    s.honors.forEach(h=>{
+      let t=null;
+      if(h.place==='Nhất'||h.place==='Nhì')t=tFin;
+      else if(s.third)t=(state.res[s.third.id]||{}).t1;
+      else{const sm=semis[si++];t=sm&&(state.res[sm.id]||{}).t1;}
+      hon.push([cc.cat.name,{v:s.label,s:6},{v:h.place,s:5},{v:h.team||'(chưa xác định)',s:h.place==='Nhất'?5:3},h.parts?h.parts[0]:'',h.parts?(h.parts[1]||''):'',h.team&&t?{d:t}:'']);});}));
+  /* 5. Danh sách đội */
+  const teams=[H(['Nội dung','Bảng','Số TT','Đội','VĐV 1','VĐV 2'])];
+  cats.forEach(cc=>cc.cat.teams.forEach((t,i)=>teams.push([cc.cat.name,{v:letter(t.g),s:6},{v:i+1},cc.tmap[t.id].name,t.a||'',t.b||''])));
+  /* 0. Tổng quan */
+  const all=Object.values(state.res).filter(r=>r.t0||r.t1);
+  const first=all.length?Math.min(...all.map(r=>r.t0||r.t1)):null,lastT=all.length?Math.max(...all.map(r=>r.t1||r.t0)):null;
+  const ov=[[{v:state.cfg.title||'Giải Pickleball',s:4}],[{v:'Báo cáo kết quả giải đấu',s:8}],[],
+    [{v:'Thời điểm xuất báo cáo',s:5},{d:Date.now()}],
+    [{v:'Số nội dung thi đấu',s:5},{v:cats.length}],
+    [{v:'Số trận đã kết thúc',s:5},{v:done.length,s:6},{v:'/ '+C.nMatch+' trận',s:3}],
+    [{v:'Lần nhập tỉ số đầu tiên',s:5},first?{d:first}:'—'],
+    [{v:'Lần chốt tỉ số cuối cùng',s:5},lastT?{d:lastT}:'—'],
+    [{v:'Số sân / giờ bắt đầu dự kiến',s:5},state.cfg.courts+' sân / '+state.cfg.start],[],
+    [{v:'Nhà vô địch từng nội dung',s:7},{v:'',s:7},{v:'',s:7}]];
+  cats.forEach(cc=>cc.series.forEach(s=>{const h=s.honors[0];ov.push([cc.cat.short+' · '+s.label,{v:h.team||'(chưa xác định)',s:5},(()=>{const t=(state.res[s.rounds[s.rounds.length-1].matches[0].id]||{}).t1;return h.team&&t?{d:t}:'';})()]);}));
+  ov.push([],[{v:'Ghi chú: hệ thống không có đồng hồ bấm trận. "Giờ nhập" là lúc BTC gõ tỉ số lần đầu, "giờ chốt" là lần sửa/nhập cuối cùng của trận đó và được dùng làm thời điểm kết thúc trận.',s:8}]);
+  return buildXlsx([
+    {name:'Tổng quan',rows:ov,widths:[34,40,22],sel:true,grid:false},
+    {name:'Lịch sử trận đấu',rows:hist,widths:[8,30,26,6,12,30,30,9,9,30,17,21,21,20],head:1,filter:true,rowH:{0:44}},
+    {name:'Nhật ký theo thời gian',rows:log,widths:[6,21,8,30,26,58,62],head:1,filter:true,rowH:{0:32}},
+    {name:'Bảng xếp hạng',rows:tab,widths:[30,7,6,32,9,8,8,8,10,10,9,22],head:1,filter:true,rowH:{0:32}},
+    {name:'Vinh danh',rows:hon,widths:[30,20,8,34,24,24,21],head:1,filter:true,rowH:{0:32}},
+    {name:'Danh sách đội',rows:teams,widths:[30,7,8,34,24,24],head:1,filter:true,rowH:{0:32}}]);
+}
+function exportXlsx(){
+  const d=new Date(),stamp=d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes());
+  state.ui.exported=true;
+  return saveFile('ket-qua-giai-pickleball-'+stamp+'.xlsx',tournamentWorkbook());
+}
 
 /* ---------- EVENTS ---------- */
 const catOf=id=>state.cats.find(c=>c.id===id);
@@ -513,7 +650,8 @@ function handle(el,ev){
     case'score':{const m=C.matchMap[el.dataset.m],a=resolve(m.a,m.cat),b=resolve(m.b,m.cat);if(!a.id||!b.id)return false;
       const i=+el.dataset.i,cur=(getScore(m,a.id,b.id)||[null,null]).slice();
       cur[i]=v===''?null:Math.min(99,Math.max(0,parseInt(v)));
-      if(cur[0]==null&&cur[1]==null)delete state.res[m.id];else state.res[m.id]={ta:a.id,tb:b.id,sa:cur[0],sb:cur[1]};break;}
+      if(cur[0]==null&&cur[1]==null)delete state.res[m.id];
+      else{const old=state.res[m.id],now=Date.now();state.res[m.id]={ta:a.id,tb:b.id,sa:cur[0],sb:cur[1],t0:(old&&old.t0)||now,t1:now};}break;}
     case'lots':{const cc=C.byCat[el.dataset.c],g=cc.groups[+el.dataset.g];c.lots=c.lots||{};g.teams.forEach(id=>{c.lots[id]=Math.random();});break;}
     case'exportjson':{const s=JSON.parse(JSON.stringify(state));s.ui={};saveFile('pickleball-sao-luu.json',JSON.stringify(s));return true;}
     case'exportcsv':saveFile('lich-thi-dau.csv',scheduleCSV());return true;
@@ -524,9 +662,12 @@ function handle(el,ev){
     case'imptoggle':state.ui.imp=!state.ui.imp;break;
     case'impapply':{try{const s=JSON.parse(document.getElementById('imptext').value);if(!s.cats||!s.cfg)throw 0;state=s;state.ui=Object.assign({tab:'setup',cat:'all',q:'',paste:{},copy:null,reset:false,imp:false},{});state.cats.forEach(c=>c.teams.forEach(t=>{const k=parseInt(String(t.id).slice(1));if(k>=uid)uid=k+1;}));}catch(e){state.ui.copy='Nội dung sao lưu không hợp lệ.';}break;}
     case'impfile':{const f=el.files[0];if(!f)return false;const r=new FileReader();r.onload=()=>{const t=document.getElementById('imptext');if(t){t.value=String(r.result);}};r.readAsText(f);return true;}
+    case'exportxlsx':exportXlsx();break;
+    case'resetres':state.res={};state.cats.forEach(c=>{c.lots={};});state.ui.reset=false;state.ui.exported=false;break;
+    case'resetnew':state.res={};state.cats.forEach(c=>{c.teams.forEach(t=>{t.a='';t.b='';});redeal(c);});state.ui.reset=false;state.ui.exported=false;state.ui.tab='setup';break;
     case'resetask':state.ui.reset=true;break;
     case'resetno':state.ui.reset=false;break;
-    case'resetyes':state=defState();break;
+    case'resetyes':state=defState();uid=1;state.cats.forEach(c=>c.teams.forEach(t=>{const k=parseInt(String(t.id).slice(1));if(k>=uid)uid=k+1;}));break;
     default:return false;
   }
   render();return true;
@@ -542,13 +683,14 @@ load();render();
 const keyEnc=k=>String(k).replace(/\./g,'_'),keyDec=k=>String(k).replace(/_/g,'.');
 function arr(x){if(!x)return[];return Array.isArray(x)?x.filter(v=>v!=null):Object.keys(x).sort((a,b)=>a-b).map(k=>x[k]);}
 function normCats(x){return arr(x).map(c=>{c.teams=arr(c.teams).map(t=>({id:t.id,a:t.a||'',b:t.b||'',g:+t.g||0}));c.lots=c.lots||{};c.n=c.teams.length;c.groups=+c.groups||1;c.name=c.name||'';c.short=c.short||c.name;return c;});}
-function decodeRes(r){const o={};Object.keys(r||{}).forEach(k=>{const v=r[k];if(v)o[keyDec(k)]={ta:v.ta,tb:v.tb,sa:v.sa==null?null:v.sa,sb:v.sb==null?null:v.sb};});return o;}
+const mkRes=v=>{const o={ta:v.ta,tb:v.tb,sa:v.sa==null?null:v.sa,sb:v.sb==null?null:v.sb};if(Number.isFinite(v.t0))o.t0=v.t0;if(Number.isFinite(v.t1))o.t1=v.t1;return o;};
+function decodeRes(r){const o={};Object.keys(r||{}).forEach(k=>{const v=r[k];if(v)o[keyDec(k)]=mkRes(v);});return o;}
 let _rq=0;
 const requestRender=()=>{clearTimeout(_rq);_rq=setTimeout(()=>{if(RO&&!window.__remoteReady)return render();render();},120);};
 window.App={mode:MODE,keyEnc,keyDec,
   getData(){return{cfg:state.cfg,cats:state.cats,res:state.res};},
   setCfg(c){state.cfg=Object.assign(defState().cfg,c||{});window.__cfgIn=true;if(window.__catsIn){window.__remoteReady=true;}requestRender();},
   setCats(c){state.cats=normCats(c);window.__catsIn=true;if(window.__cfgIn){window.__remoteReady=true;}requestRender();},
-  patchRes(k,v){const id=keyDec(k);if(v)state.res[id]={ta:v.ta,tb:v.tb,sa:v.sa==null?null:v.sa,sb:v.sb==null?null:v.sb};else delete state.res[id];requestRender();},
+  patchRes(k,v){const id=keyDec(k);if(v)state.res[id]=mkRes(v);else delete state.res[id];requestRender();},
   replaceAll(d){state.cfg=Object.assign(defState().cfg,d.cfg||{});state.cats=normCats(d.cats);state.res=decodeRes(d.res);state.cats.forEach(c=>c.teams.forEach(t=>{const k=parseInt(String(t.id).slice(1));if(k>=uid)uid=k+1;}));render();},
   onChange:null};
