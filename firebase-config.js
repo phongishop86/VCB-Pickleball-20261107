@@ -1,7 +1,7 @@
 // Dán thông tin Firebase của bạn vào đây (Project settings > General > Your apps > SDK setup and configuration > Config).
 // Đoạn này không phải bí mật. Quyền ghi được khoá bằng Rules trong Realtime Database.
 window.FIREBASE_CONFIG = {
-  apiKey: "DÁN_apiKey_VÀO_ĐÂY",
+  apiKey: "AIzaSyAkVCCdp-nlTUKQfvSo3LsYvw7P4PJwj0o",
   authDomain: "vcb-pickleball-20261107.firebaseapp.com",
   databaseURL: "https://vcb-pickleball-20261107-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "vcb-pickleball-20261107",
