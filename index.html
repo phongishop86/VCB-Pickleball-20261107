@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700;800&display=swap">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
+<link rel="stylesheet" href="/style.css">
+<title>Kết quả thi đấu trực tiếp</title>
+</head><body>
+<div class="wrap">
+  <header class="top"><div class="top-in">
+    <div class="brand"><h1 id="ttl">Giải Pickleball</h1><div class="stats" id="stats"></div></div>
+    <div id="live"><i></i>Đang kết nối…</div>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+  </div></header>
+  <main id="app"></main>
+</div>
+<script>window.MODE='view';</script>
+<script src="/firebase-config.js"></script>
+<script src="/app.js"></script>
+<script type="module" src="/sync.js"></script>
+</body></html>
